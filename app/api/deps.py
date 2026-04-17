@@ -29,6 +29,11 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     
     return {"user_id": "demo_user"}  # Return user info
 
+# Alias for verify_token to maintain compatibility
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current authenticated user"""
+    return await verify_token(credentials)
+
 # Optional authentication for endpoints that don't require auth
 async def get_current_user_optional(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Optional authentication - returns None if no valid token"""

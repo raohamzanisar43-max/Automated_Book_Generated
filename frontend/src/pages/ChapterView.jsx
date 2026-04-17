@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 import { bookAPI } from '../services/api';
-import { useBook, useGenerateChapter } from '../hooks/useBooks';
+import { useBook, useBookChapters, useGenerateChapter } from '../hooks/useBooks';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
 import { format } from 'date-fns';

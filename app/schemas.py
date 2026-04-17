@@ -10,6 +10,16 @@ class BookBase(BaseModel):
 class BookCreate(BookBase):
     notes_on_outline_before: str
 
+class BookUpdate(BaseModel):
+    title: Optional[str] = None
+    outline: Optional[str] = None
+    notes_on_outline_before: Optional[str] = None
+    notes_on_outline_after: Optional[str] = None
+    status_outline_notes: Optional[OutlineNotesStatus] = None
+    final_review_notes_status: Optional[OutlineNotesStatus] = None
+    book_output_status: Optional[str] = None
+    file_url: Optional[str] = None
+
 class OutlineReview(BaseModel):
     status_outline_notes: OutlineNotesStatus
     notes_on_outline_after: Optional[str] = None
@@ -19,6 +29,30 @@ class FinalReview(BaseModel):
 
 class ChapterBase(BaseModel):
     chapter_number: int
+
+class ChapterCreate(ChapterBase):
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    chapter_notes_status: Optional[ChapterNotesStatus] = None
+    chapter_notes: Optional[str] = None
+
+class ChapterUpdate(BaseModel):
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    chapter_notes_status: Optional[ChapterNotesStatus] = None
+    chapter_notes: Optional[str] = None
+
+class WebSearchResult(BaseModel):
+    title: str
+    url: str
+    snippet: str
+    
+class ExportRequest(BaseModel):
+    format: str  # 'pdf', 'docx', 'txt'
+    
+class SuccessResponse(BaseModel):
+    success: bool
+    message: str
 
 class ChapterResponse(ChapterBase):
     id: UUID

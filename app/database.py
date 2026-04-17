@@ -4,7 +4,7 @@ from sqlalchemy.orm import declarative_base
 from app.config import settings
 
 # In case driver isn't explicitly async in URL
-DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
+DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 engine = create_async_engine(
     DATABASE_URL,

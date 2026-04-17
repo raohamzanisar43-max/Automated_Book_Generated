@@ -7,10 +7,10 @@ from app.api.deps import get_current_db_session, verify_token
 from app.crud import book as book_crud, chapter as chapter_crud
 from app.models import BookStatus, OutlineNotesStatus, ChapterNotesStatus
 from app.schemas import (
-    Book, BookCreate, BookUpdate, BookResponse,
-    OutlineGenerationRequest, OutlineUpdateRequest,
-    ChapterGenerationRequest, ChapterResponse,
-    FinalReviewRequest, ExportRequest, SuccessResponse
+    BookCreate, BookUpdate, BookResponse,
+    OutlineReview, FinalReview,
+    ChapterCreate, ChapterUpdate, ChapterResponse,
+    ExportRequest, SuccessResponse
 )
 from app.services import (
     ai_service, research_service, 
@@ -123,7 +123,7 @@ async def get_book(
 @router.put("/{book_id}/outline", response_model=BookResponse)
 async def update_outline(
     book_id: UUID,
-    outline_update: OutlineUpdateRequest,
+    outline_update: OutlineReview,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_current_db_session),
     current_user: dict = Depends(verify_token)
@@ -266,7 +266,7 @@ async def get_book_chapters(
 async def generate_chapter(
     book_id: UUID,
     chapter_number: int,
-    chapter_request: ChapterGenerationRequest,
+    chapter_request: ChapterCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_current_db_session),
     current_user: dict = Depends(verify_token)
@@ -344,7 +344,7 @@ async def generate_chapter(
 @router.put("/{book_id}/final-review", response_model=BookResponse)
 async def final_review(
     book_id: UUID,
-    final_review: FinalReviewRequest,
+    final_review: FinalReview,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_current_db_session),
     current_user: dict = Depends(verify_token)
@@ -454,8 +454,7 @@ async def export_book(
         )
         
         return SuccessResponse(
-            message=f"Book exported successfully to {export_request.format.upper()} format",
-            data={"file_path": file_path, "format": export_request.format}
+            message=f"Book exported successfully to {export_request.format.upper()} format"
         )
         
     except HTTPException:

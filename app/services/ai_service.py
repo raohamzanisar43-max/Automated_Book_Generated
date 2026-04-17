@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
-        self.client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
-        self.model = settings.openai_model
+        self.client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.model = settings.OPENAI_MODEL
 
     async def generate_outline(self, title: str, notes: str) -> str:
         """Generate book outline based on title and notes"""

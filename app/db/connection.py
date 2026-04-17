@@ -3,26 +3,42 @@ Database connection configuration
 Professional database management with connection pooling and error handling
 """
 
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 import logging
 from typing import Generator
+import os
 
 from app.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Check if using SQLite
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
 # Create SQLAlchemy engine with professional configuration
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=3600,   # Recycle connections every hour
-    echo=settings.SQL_DEBUG,  # Log SQL queries in debug mode
-    future=True,  # Use SQLAlchemy 2.0 style
-)
+if is_sqlite:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        poolclass=StaticPool,
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 20
+        },
+        echo=settings.SQL_DEBUG,
+        future=True,
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=3600,   # Recycle connections every hour
+        echo=settings.SQL_DEBUG,  # Log SQL queries in debug mode
+        future=True,  # Use SQLAlchemy 2.0 style
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(
@@ -60,7 +76,7 @@ async def check_database_connection() -> bool:
     """
     try:
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
+            connection.execute(text("SELECT 1"))
         logger.info("Database connection successful")
         return True
     except Exception as e:
@@ -74,33 +90,59 @@ async def get_database_info() -> dict:
     """
     try:
         with engine.connect() as connection:
-            # Get PostgreSQL version
-            version_result = connection.execute("SELECT version()")
-            version = version_result.scalar()
-            
-            # Get table counts
-            tables_result = connection.execute("""
-                SELECT table_name, 
-                       (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
-                FROM information_schema.tables t 
-                WHERE table_schema = 'public' 
-                ORDER BY table_name
-            """)
-            tables = dict(tables_result.fetchall())
-            
-            # Get database size
-            size_result = connection.execute("""
-                SELECT pg_size_pretty(pg_database_size(current_database()))
-            """)
-            size = size_result.scalar()
-            
-            return {
-                "version": version,
-                "tables": tables,
-                "size": size,
-                "connection_pool_size": engine.pool.size(),
-                "connection_pool_checked_out": engine.pool.checkedout()
-            }
+            if is_sqlite:
+                # SQLite specific queries
+                version_result = connection.execute(text("SELECT sqlite_version()"))
+                version = f"SQLite {version_result.scalar()}"
+                
+                # Get table info
+                tables_result = connection.execute(text("""
+                    SELECT name FROM sqlite_master WHERE type='table' ORDER BY name
+                """))
+                tables = {row[0]: "N/A" for row in tables_result.fetchall()}
+                
+                # Get database size (file size)
+                db_path = settings.DATABASE_URL.replace("sqlite:///", "")
+                if os.path.exists(db_path):
+                    size = f"{os.path.getsize(db_path) / 1024:.2f} KB"
+                else:
+                    size = "Unknown"
+                
+                return {
+                    "version": version,
+                    "tables": tables,
+                    "size": size,
+                    "type": "SQLite"
+                }
+            else:
+                # PostgreSQL specific queries
+                version_result = connection.execute(text("SELECT version()"))
+                version = version_result.scalar()
+                
+                # Get table counts
+                tables_result = connection.execute(text("""
+                    SELECT table_name, 
+                           (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
+                    FROM information_schema.tables t 
+                    WHERE table_schema = 'public' 
+                    ORDER BY table_name
+                """))
+                tables = dict(tables_result.fetchall())
+                
+                # Get database size
+                size_result = connection.execute(text("""
+                    SELECT pg_size_pretty(pg_database_size(current_database()))
+                """))
+                size = size_result.scalar()
+                
+                return {
+                    "version": version,
+                    "tables": tables,
+                    "size": size,
+                    "connection_pool_size": engine.pool.size(),
+                    "connection_pool_checked_out": engine.pool.checkedout(),
+                    "type": "PostgreSQL"
+                }
     except Exception as e:
         logger.error(f"Error getting database info: {e}")
         return {"error": str(e)}
@@ -140,11 +182,20 @@ class DatabaseManager:
             if health_status["connection"]:
                 # Check if tables exist
                 with self.engine.connect() as connection:
-                    result = connection.execute("""
-                        SELECT COUNT(*) FROM information_schema.tables 
-                        WHERE table_schema = 'public' 
-                        AND table_name IN ('books', 'chapters')
-                    """)
+                    if is_sqlite:
+                        # SQLite table check
+                        result = connection.execute(text("""
+                            SELECT COUNT(*) FROM sqlite_master 
+                            WHERE type='table' 
+                            AND name IN ('books', 'chapters')
+                        """))
+                    else:
+                        # PostgreSQL table check
+                        result = connection.execute(text("""
+                            SELECT COUNT(*) FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name IN ('books', 'chapters')
+                        """))
                     table_count = result.scalar()
                     health_status["tables_created"] = table_count == 2
             

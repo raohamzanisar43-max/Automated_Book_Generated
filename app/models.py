@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
 import enum
-from app.database import Base
+from app.db.connection import Base
 
 class OutlineNotesStatus(str, enum.Enum):
     yes = "yes"

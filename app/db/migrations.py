@@ -9,8 +9,8 @@ from sqlalchemy import text, inspect
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Dict, Any
 
-from .connection import engine, db_manager
-from .models import Base, Book, Chapter, BookStatus, NotesStatus, ChapterStatus
+from .connection import engine, db_manager, is_sqlite
+from ..models import Base, Book, Chapter, BookStatus, OutlineNotesStatus, ChapterNotesStatus
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,20 @@ class MigrationManager:
     
     def __init__(self):
         self.engine = engine
-        self.migrations = [
-            self._create_initial_schema,
-            self._create_enums,
-            self._create_indexes,
-            self._create_triggers,
-            self._insert_sample_data,
-        ]
+        if is_sqlite:
+            self.migrations = [
+                self._create_initial_schema,
+                self._create_sqlite_indexes,
+                self._insert_sample_data,
+            ]
+        else:
+            self.migrations = [
+                self._create_initial_schema,
+                self._create_enums,
+                self._create_postgresql_indexes,
+                self._create_triggers,
+                self._insert_sample_data,
+            ]
     
     async def run_all_migrations(self) -> Dict[str, Any]:
         """
@@ -82,9 +89,9 @@ class MigrationManager:
         """Create initial database schema"""
         logger.info("Creating initial database schema...")
         
-        async with self.engine.begin() as conn:
+        with self.engine.begin() as conn:
             # Create all tables
-            await conn.run_sync(Base.metadata.create_all)
+            conn.run_sync(Base.metadata.create_all)
             logger.info("Base tables created")
     
     async def _create_enums(self):
@@ -133,15 +140,34 @@ class MigrationManager:
             """
         ]
         
-        async with self.engine.begin() as conn:
+        with self.engine.begin() as conn:
             for enum_sql in enum_definitions:
-                await conn.execute(text(enum_sql))
+                conn.execute(text(enum_sql))
         
         logger.info("Enum types created")
     
-    async def _create_indexes(self):
-        """Create performance indexes"""
-        logger.info("Creating indexes...")
+    async def _create_sqlite_indexes(self):
+        """Create SQLite performance indexes"""
+        logger.info("Creating SQLite indexes...")
+        
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_books_status ON books(status);",
+            "CREATE INDEX IF NOT EXISTS idx_books_created_at ON books(created_at);",
+            "CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);",
+            "CREATE INDEX IF NOT EXISTS idx_chapters_book_id ON chapters(book_id);",
+            "CREATE INDEX IF NOT EXISTS idx_chapters_chapter_number ON chapters(chapter_number);",
+            "CREATE INDEX IF NOT EXISTS idx_chapters_book_chapter ON chapters(book_id, chapter_number);",
+        ]
+        
+        with self.engine.begin() as conn:
+            for index_sql in indexes:
+                conn.execute(text(index_sql))
+        
+        logger.info("SQLite indexes created")
+    
+    async def _create_postgresql_indexes(self):
+        """Create PostgreSQL performance indexes"""
+        logger.info("Creating PostgreSQL indexes...")
         
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_books_status ON books(status);",
@@ -153,11 +179,11 @@ class MigrationManager:
             "CREATE INDEX IF NOT EXISTS idx_chapters_book_chapter ON chapters(book_id, chapter_number);",
         ]
         
-        async with self.engine.begin() as conn:
+        with self.engine.begin() as conn:
             for index_sql in indexes:
-                await conn.execute(text(index_sql))
+                conn.execute(text(index_sql))
         
-        logger.info("Indexes created")
+        logger.info("PostgreSQL indexes created")
     
     async def _create_triggers(self):
         """Create triggers for automatic timestamp updates"""
@@ -187,9 +213,9 @@ class MigrationManager:
             """
         ]
         
-        async with self.engine.begin() as conn:
+        with self.engine.begin() as conn:
             for trigger_sql in trigger_functions:
-                await conn.execute(text(trigger_sql))
+                conn.execute(text(trigger_sql))
         
         logger.info("Triggers created")
     
@@ -197,42 +223,69 @@ class MigrationManager:
         """Insert sample data for testing"""
         logger.info("Inserting sample data...")
         
-        sample_data = [
-            """
-            INSERT INTO books (title, notes_on_outline_before, status) 
-            VALUES (
-                'Getting Started with AI Book Generation', 
-                'A comprehensive guide to automated book generation using AI, covering the complete workflow from outline to final publication.',
-                'draft_outline'
-            )
-            ON CONFLICT DO NOTHING;
-            """,
-            """
-            INSERT INTO books (title, notes_on_outline_before, status) 
-            VALUES (
-                'Advanced React Development', 
-                'Deep dive into React ecosystem, hooks, performance optimization, and best practices for modern web development.',
-                'draft_outline'
-            )
-            ON CONFLICT DO NOTHING;
-            """
-        ]
+        if is_sqlite:
+            sample_data = [
+                """
+                INSERT OR IGNORE INTO books (title, notes_on_outline_before, status) 
+                VALUES (
+                    'Getting Started with AI Book Generation', 
+                    'A comprehensive guide to automated book generation using AI, covering the complete workflow from outline to final publication.',
+                    'draft_outline'
+                );
+                """,
+                """
+                INSERT OR IGNORE INTO books (title, notes_on_outline_before, status) 
+                VALUES (
+                    'Advanced React Development', 
+                    'Deep dive into React ecosystem, hooks, performance optimization, and best practices for modern web development.',
+                    'draft_outline'
+                );
+                """
+            ]
+        else:
+            sample_data = [
+                """
+                INSERT INTO books (title, notes_on_outline_before, status) 
+                VALUES (
+                    'Getting Started with AI Book Generation', 
+                    'A comprehensive guide to automated book generation using AI, covering the complete workflow from outline to final publication.',
+                    'draft_outline'
+                )
+                ON CONFLICT DO NOTHING;
+                """,
+                """
+                INSERT INTO books (title, notes_on_outline_before, status) 
+                VALUES (
+                    'Advanced React Development', 
+                    'Deep dive into React ecosystem, hooks, performance optimization, and best practices for modern web development.',
+                    'draft_outline'
+                )
+                ON CONFLICT DO NOTHING;
+                """
+            ]
         
-        async with self.engine.begin() as conn:
+        with self.engine.begin() as conn:
             for data_sql in sample_data:
-                await conn.execute(text(data_sql))
+                conn.execute(text(data_sql))
         
         logger.info("Sample data inserted")
     
     async def _get_table_list(self) -> List[str]:
         """Get list of all tables in the database"""
-        async with self.engine.begin() as conn:
-            result = await conn.execute(text("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public'
-                ORDER BY table_name
-            """))
+        with self.engine.begin() as conn:
+            if is_sqlite:
+                result = conn.execute(text("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' 
+                    ORDER BY name
+                """))
+            else:
+                result = conn.execute(text("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public'
+                    ORDER BY table_name
+                """))
             return [row[0] for row in result.fetchall()]
     
     async def get_migration_status(self) -> Dict[str, Any]:

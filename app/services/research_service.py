@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ResearchService:
     def __init__(self):
-        self.serpapi_key = settings.serpapi_key
+        self.serpapi_key = settings.SERPAPI_KEY
         self.base_url = "https://serpapi.com/search"
 
     async def search_web(self, query: str, num_results: int = 5) -> List[WebSearchResult]:
